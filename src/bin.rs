@@ -1,6 +1,8 @@
 use std::ffi::{CStr, c_char};
 use std::os::raw::c_int;
 
+use sdl2_sys::{SDL_INIT_EVERYTHING, SDL_INIT_GAMECONTROLLER};
+
 fn main() {
 }
 
@@ -14,6 +16,12 @@ pub extern "C" fn external_main(
     // Force the host GL context to be current.
     unsafe {
         sdl2_sys::SDL_GL_MakeCurrent(host_window, host_gl_context);
+        sdl2_sys::SDL_Init(SDL_INIT_GAMECONTROLLER);
+        sdl2_sys::SDL_Init(SDL_INIT_EVERYTHING);
+        let hint_key = std::ffi::CString::new("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS").unwrap();
+        let hint_value = std::ffi::CString::new("1").unwrap();
+        sdl2_sys::SDL_SetHint(hint_key.as_ptr(), hint_value.as_ptr());
+        sdl2::hint::set("SDL_JOYSTICK_HIDAPI", "1");
     }
 
     let mut args: Vec<String> = unsafe {
@@ -38,6 +46,10 @@ pub extern "C" fn external_main(
         }
 
         args.remove(2);
+
+        if args[1] == "" || args[1].is_empty() {
+            args.remove(1);
+        }
     }
 
     match touchHLE::main(args.into_iter()) {

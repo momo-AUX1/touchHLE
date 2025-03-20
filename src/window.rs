@@ -64,6 +64,7 @@ fn rotate_fullscreen_size(orientation: DeviceOrientation, screen_size: (u32, u32
         }
     }
 }
+
 /// Tell SDL2 what orientation we want. Only useful on Android.
 fn set_sdl2_orientation(orientation: DeviceOrientation) {
     // Despite the name, this hint works on Android too.
@@ -202,7 +203,6 @@ impl Window {
                 let event_pump = sdl_ctx.event_pump().unwrap();
                 let controller_ctx = sdl_ctx.game_controller().unwrap();
                 let sensor_ctx = sdl_ctx.sensor().unwrap();
-                // (Optional) Add accelerometer detection if needed.
                 let accelerometer = None;
                 #[cfg(target_os = "macos")]
                 let max_height = window.size().1;
@@ -446,14 +446,13 @@ impl Window {
         // so, we keep track of an unconsumed one from a previous loop iteration
         // FIXME: use peek_event() from even_subsystem
         let mut previous_event: Option<sdl2::event::Event> = None;
-        let (drawable_widthX, drawable_heightX) = self.window.drawable_size();
-        gl::load_with(|s| self.video_ctx.gl_get_proc_address(s) as *const _);
         while self.enable_event_polling {
-            unsafe {
+            /*unsafe {
                 gl::Viewport(0, 0, drawable_widthX as i32, drawable_heightX as i32);
-            }
+            }*/
             use sdl2::event::Event as E;
             let event = if let Some(e) = previous_event.take() {
+                println!("Consuming previous event: {:?}", e);
                 match e {
                     E::Unknown { .. } => (),
                     _ => log_dbg!("Consuming previous event: {:?}", e),
