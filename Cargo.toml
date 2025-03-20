@@ -27,8 +27,8 @@ name = "touchHLE"
 path = "src/bin.rs"
 
 [features]
-default = ["static"]
-static = ["sdl2/bundled", "sdl2/static-link", "touchHLE_openal_soft_wrapper/static"]
+default = ["touchHLE_openal_soft_wrapper/static"]
+static = ["touchHLE_openal_soft_wrapper/static"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -38,6 +38,8 @@ cmake = "0.1.49"
 gl_generator = "0.14.0"
 
 [dependencies]
+gl = "0.14.0"
+proc-macro2 = { version = "=1.0.94", features=["default", "proc-macro"] }
 caf = "0.1.0"
 hound = "3.5.0"
 mach_object = "0.1.17"

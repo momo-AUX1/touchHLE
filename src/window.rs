@@ -32,14 +32,25 @@ pub enum DeviceOrientation {
     LandscapeLeft,
     LandscapeRight,
 }
-fn size_for_orientation(orientation: DeviceOrientation, scale_hack: NonZeroU32) -> (u32, u32) {
+fn size_for_orientation(
+    orientation: DeviceOrientation,
+    scale_hack: NonZeroU32,
+) -> (u32, u32) {
     let scale_hack = scale_hack.get();
     match orientation {
         DeviceOrientation::Portrait => (320 * scale_hack, 480 * scale_hack),
-        DeviceOrientation::LandscapeLeft => (480 * scale_hack, 320 * scale_hack),
-        DeviceOrientation::LandscapeRight => (480 * scale_hack, 320 * scale_hack),
+        DeviceOrientation::LandscapeLeft | DeviceOrientation::LandscapeRight => {
+            let mut dw: i32 = 0;
+            let mut dh: i32 = 0;
+            unsafe {
+                let current_window = sdl2_sys::SDL_GL_GetCurrentWindow();
+                sdl2_sys::SDL_GL_GetDrawableSize(current_window, &mut dw, &mut dh);
+            }
+            (dw as u32, dh as u32)
+        }
     }
 }
+
 fn rotate_fullscreen_size(orientation: DeviceOrientation, screen_size: (u32, u32)) -> (u32, u32) {
     let (short_side, long_side) = if screen_size.0 < screen_size.1 {
         (screen_size.0, screen_size.1)
@@ -177,88 +188,135 @@ impl Window {
         launch_image: Option<Image>,
         options: &Options,
     ) -> Window {
+        // Check if a host window and GL context are already current.
+        unsafe {
+            let raw_window = sdl2_sys::SDL_GL_GetCurrentWindow();
+            let raw_gl_context = sdl2_sys::SDL_GL_GetCurrentContext();
+            if !raw_window.is_null() && !raw_gl_context.is_null() {
+                println!("Using existing host window and GL context.");
+                // Reinitialize the SDL context and video subsystem.
+                let sdl_ctx = sdl2::init().unwrap();
+                let video_ctx = sdl_ctx.video().unwrap();
+                // Wrap the host window pointer into an sdl2::video::Window.
+                let window = sdl2::video::Window::from_ll(video_ctx.clone(), raw_window, std::ptr::null_mut());
+                let event_pump = sdl_ctx.event_pump().unwrap();
+                let controller_ctx = sdl_ctx.game_controller().unwrap();
+                let sensor_ctx = sdl_ctx.sensor().unwrap();
+                // (Optional) Add accelerometer detection if needed.
+                let accelerometer = None;
+                #[cfg(target_os = "macos")]
+                let max_height = window.size().1;
+                let scale_hack = options.scale_hack;
+                let device_orientation = options.initial_orientation;
+                let fullscreen = options.fullscreen;
+                
+                // Build our Window struct from the host window.
+                let mut host_window = Window {
+                    _sdl_ctx: sdl_ctx,
+                    video_ctx,
+                    window,
+                    event_pump,
+                    event_queue: VecDeque::new(),
+                    last_polled: std::time::Instant::now() - std::time::Duration::from_secs(1),
+                    high_priority_event: None,
+                    enable_event_polling: true,
+                    #[cfg(target_os = "macos")]
+                    max_height,
+                    #[cfg(target_os = "macos")]
+                    viewport_y_offset: 0,
+                    fullscreen,
+                    scale_hack,
+                    internal_gl_ctx: None,
+                    splash_image: launch_image,
+                    device_orientation,
+                    app_gl_ctx_no_longer_current: false,
+                    controller_ctx,
+                    controllers: Vec::new(),
+                    _sensor_ctx: sensor_ctx,
+                    accelerometer,
+                    virtual_cursor_last: None,
+                    virtual_cursor_last_unsticky: None,
+                    virtual_accelerometer_last: None,
+                };
+    
+                // Set the window icon if provided.
+                if let Some(icon) = icon {
+                    host_window.window.set_icon(surface_from_image(&icon));
+                }
+    
+                // Create the GL context for splash screen and UI rendering.
+                let gl_ctx = create_gles1_ctx(&mut host_window, options);
+                gl_ctx.make_current(&host_window);
+                log!("Driver info: {}", unsafe { gl_ctx.driver_description() });
+                host_window.internal_gl_ctx = Some(gl_ctx);
+    
+                if host_window.splash_image.is_some() {
+                    host_window.display_splash();
+                }
+    
+                return host_window;
+            }
+        }
+    
+        // Fallback: No host window exists, so use the original window creation code.
         let sdl_ctx = sdl2::init().unwrap();
         let video_ctx = sdl_ctx.video().unwrap();
-
-        // The "hidapi" feature of rust-sdl2 is enabled so that sdl2::sensor
-        // is available, but we don't want to enable SDL's HIDAPI controller
-        // drivers because they cause duplicated controllers on macOS
-        // (https://github.com/libsdl-org/SDL/issues/7479). Once that's fixed,
-        // remove this (https://github.com/touchHLE/touchHLE/issues/85).
+    
+        // Set hints and enable features as originally done.
         sdl2::hint::set("SDL_JOYSTICK_HIDAPI", "0");
-
         if env::consts::OS == "android" {
-            // It's important to set context version BEFORE window creation
-            // ref. https://wiki.libsdl.org/SDL2/SDL_GLattr
             let attr = video_ctx.gl_attr();
             attr.set_context_version(1, 1);
             attr.set_context_profile(sdl2::video::GLProfile::GLES);
-
-            // Disable blocking of event loop when app is paused.
             sdl2::hint::set("SDL_ANDROID_BLOCK_ON_PAUSE", "0");
         }
-
-        // Separate mouse and touch events
         sdl2::hint::set("SDL_TOUCH_MOUSE_EVENTS", "0");
-
-        // SDL2 disables the screen saver by default, but iPhone OS enables
-        // the idle timer that triggers sleep by default, so we turn it back on
-        // here, and then the app can disable it if it wants to.
         video_ctx.enable_screen_saver();
-
+    
         let scale_hack = options.scale_hack;
-        // TODO: some apps specify their orientation in Info.plist, we could use
-        // that here.
         let device_orientation = options.initial_orientation;
         let fullscreen = options.fullscreen;
-
+    
         let mut window = if Self::rotatable_fullscreen() {
-            // Without this, SDL will force fullscreen mode to be portrait.
             set_sdl2_orientation(device_orientation);
             let screen_size = video_ctx.display_bounds(0).unwrap().size();
             let (width, height) = rotate_fullscreen_size(device_orientation, screen_size);
-            let window = video_ctx
+            video_ctx
                 .window(title, width, height)
                 .fullscreen()
                 .opengl()
                 .build()
-                .unwrap();
-            window
+                .unwrap()
         } else if fullscreen {
             let (width, height) = video_ctx.display_bounds(0).unwrap().size();
-            let window = video_ctx
+            video_ctx
                 .window(title, width, height)
                 .fullscreen_desktop()
                 .opengl()
                 .build()
-                .unwrap();
-            window
+                .unwrap()
         } else {
             let (width, height) = size_for_orientation(device_orientation, scale_hack);
-            let window = video_ctx
+            video_ctx
                 .window(title, width, height)
                 .position_centered()
                 .opengl()
                 .build()
-                .unwrap();
-            window
+                .unwrap()
         };
-
+    
         if env::consts::OS == "android" {
-            // Sanity check
             let gl_attr = video_ctx.gl_attr();
             debug_assert_eq!(gl_attr.context_profile(), sdl2::video::GLProfile::GLES);
             debug_assert_eq!(gl_attr.context_version(), (1, 1));
         }
-
+    
         if let Some(icon) = icon {
             window.set_icon(surface_from_image(&icon));
         }
-
+    
         let event_pump = sdl_ctx.event_pump().unwrap();
-
         let controller_ctx = sdl_ctx.game_controller().unwrap();
-
         let sensor_ctx = sdl_ctx.sensor().unwrap();
         let mut accelerometer: Option<sdl2::sensor::Sensor> = None;
         if let Ok(num_sensors) = sensor_ctx.num_sensors() {
@@ -272,17 +330,17 @@ impl Window {
                 }
             }
         }
-
+    
         #[cfg(target_os = "macos")]
         let max_height = window.size().1;
-
-        let mut window = Window {
+    
+        let mut new_window = Window {
             _sdl_ctx: sdl_ctx,
             video_ctx,
             window,
             event_pump,
             event_queue: VecDeque::new(),
-            last_polled: Instant::now() - Duration::from_secs(1),
+            last_polled: std::time::Instant::now() - std::time::Duration::from_secs(1),
             high_priority_event: None,
             enable_event_polling: true,
             #[cfg(target_os = "macos")]
@@ -303,21 +361,17 @@ impl Window {
             virtual_cursor_last_unsticky: None,
             virtual_accelerometer_last: None,
         };
-
-        // Set up OpenGL ES context used for splash screen and app UI rendering
-        // (see src/frameworks/core_animation/composition.rs). OpenGL ES is used
-        // because SDL2 won't let us use more than one graphics API in the same
-        // window, and we also need OpenGL ES for the app's own rendering.
-        let gl_ctx = create_gles1_ctx(&mut window, options);
-        gl_ctx.make_current(&window);
+    
+        let gl_ctx = create_gles1_ctx(&mut new_window, options);
+        gl_ctx.make_current(&new_window);
         log!("Driver info: {}", unsafe { gl_ctx.driver_description() });
-        window.internal_gl_ctx = Some(gl_ctx);
-
-        if window.splash_image.is_some() {
-            window.display_splash();
+        new_window.internal_gl_ctx = Some(gl_ctx);
+    
+        if new_window.splash_image.is_some() {
+            new_window.display_splash();
         }
-
-        window
+    
+        new_window
     }
 
     /// Poll for events from the OS. This needs to be done reasonably often
@@ -392,7 +446,12 @@ impl Window {
         // so, we keep track of an unconsumed one from a previous loop iteration
         // FIXME: use peek_event() from even_subsystem
         let mut previous_event: Option<sdl2::event::Event> = None;
+        let (drawable_widthX, drawable_heightX) = self.window.drawable_size();
+        gl::load_with(|s| self.video_ctx.gl_get_proc_address(s) as *const _);
         while self.enable_event_polling {
+            unsafe {
+                gl::Viewport(0, 0, drawable_widthX as i32, drawable_heightX as i32);
+            }
             use sdl2::event::Event as E;
             let event = if let Some(e) = previous_event.take() {
                 match e {
@@ -1141,14 +1200,25 @@ impl Window {
     /// The aspect ratio of this region always reflects the guest app's view of
     /// the world, but the scale and orientation might not.
     pub fn viewport(&self) -> (u32, u32, u32, u32) {
+        if self.device_orientation == DeviceOrientation::LandscapeLeft ||
+           self.device_orientation == DeviceOrientation::LandscapeRight {
+            let mut dw: i32 = 0;
+            let mut dh: i32 = 0;
+        unsafe {
+            sdl2_sys::SDL_GL_GetDrawableSize(self.window.raw(), &mut dw, &mut dh);
+        }
+        return (0, 0, dw as u32, dh as u32);
+    }
+
+    
         let (app_width, app_height) =
             size_for_orientation(self.device_orientation, self.scale_hack);
         if !self.fullscreen && !Self::rotatable_fullscreen() {
             return (0, 0, app_width, app_height);
         }
-
+    
         let (screen_width, screen_height) = self.window.drawable_size();
-
+    
         let app_aspect = app_width as f32 / app_height as f32;
         let screen_aspect = screen_width as f32 / screen_height as f32;
         let (scaled_width, scaled_height) = if app_aspect < screen_aspect {
@@ -1166,6 +1236,7 @@ impl Window {
         let y = (screen_height - scaled_height) / 2;
         (x, y, scaled_width, scaled_height)
     }
+    
 
     /// Special offset to add to y co-ordinates, only when drawing to screen.
     pub fn viewport_y_offset(&self) -> u32 {

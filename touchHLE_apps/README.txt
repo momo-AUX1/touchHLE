@@ -1,1 +1,1 @@
-If you put your .app bundles or .ipa files in this directory, they will show up in the touchHLE app picker.
+/Users/mohammed/.Trash/vendor 13.53.51/stb /Users/mohammed/.Trash/vendor 13.53.51/dynarmic /Users/mohammed/.Trash/vendor 13.53.51/openal-soft /Users/mohammed/.Trash/vendor 13.53.51/PVRTDecompress /Users/mohammed/.Trash/vendor 13.53.51/SDL

@@ -113,6 +113,13 @@ pub const SANDBOX_DIR: &str = "touchHLE_sandbox";
 /// Get a platform-specific base path needed for accessing touchHLE's
 /// user-modifiable files. This is empty on platforms other than Android.
 pub fn user_data_base_path() -> Cow<'static, Path> {
+    if let Ok(local_state) = std::env::var("LOCAL_STATE_PATH") {
+        println!("LOCAL_STATE_PATH: {}", local_state);
+        return Cow::from(PathBuf::from(local_state));
+    }
+
+    println!("LOCAL_STATE_PATH not set");
+
     #[cfg(target_os = "android")]
     unsafe {
         // This is an exception to the rule that SDL2 should only be used

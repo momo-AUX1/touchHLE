@@ -27,3 +27,5 @@ tests/TestApp_source/build
 local.properties
 android/app/src/main/jniLibs
 android/app/build
+.DS_Store
+Cargo.lock

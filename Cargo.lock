@@ -281,6 +281,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gl"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a94edab108827d67608095e269cf862e60d920f144a5026d3dbcfd8b877fb404"
+dependencies = [
+ "gl_generator",
+]
+
+[[package]]
 name = "gl_generator"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -474,9 +483,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.47"
+version = "1.0.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ea3d908b0e36316caf9e9e2c4625cdde190a7e6f440d794667ed17a1855e725"
+checksum = "a31971752e70b8b2686d7e46ec17fb38dad4051d94024c88df49b667caea9c84"
 dependencies = [
  "unicode-ident",
 ]
@@ -544,7 +553,6 @@ version = "0.35.2"
 source = "git+https://github.com/hikari-no-yume/rust-sdl2.git?tag=touchHLE-2#15c58be733277f4314d47298132f4ad2304cc512"
 dependencies = [
  "cfg-if",
- "cmake",
  "libc",
  "version-compare",
 ]
@@ -772,11 +780,13 @@ dependencies = [
  "cc",
  "cmake",
  "encoding_rs",
+ "gl",
  "gl_generator",
  "hound",
  "mach_object",
  "md5",
  "plist",
+ "proc-macro2",
  "quick-xml",
  "rusttype",
  "sdl2",

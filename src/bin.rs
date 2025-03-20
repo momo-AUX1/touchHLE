@@ -1,12 +1,50 @@
-/*
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at https://mozilla.org/MPL/2.0/.
- */
-// Allow the crate to have a non-snake-case name (touchHLE).
-// This also allows items in the crate to have non-snake-case names.
-#![allow(non_snake_case)]
+use std::ffi::{CStr, c_char};
+use std::os::raw::c_int;
 
-fn main() -> Result<(), String> {
-    touchHLE::main(std::env::args())
+fn main() {
+}
+
+#[no_mangle]
+pub extern "C" fn external_main(
+    host_window: *mut sdl2_sys::SDL_Window,
+    host_gl_context: sdl2_sys::SDL_GLContext,
+    argc: c_int,
+    argv: *const *const c_char,
+) -> c_int {
+    // Force the host GL context to be current.
+    unsafe {
+        sdl2_sys::SDL_GL_MakeCurrent(host_window, host_gl_context);
+    }
+
+    let mut args: Vec<String> = unsafe {
+        std::slice::from_raw_parts(argv, argc as usize)
+            .iter()
+            .map(|&arg| {
+                CStr::from_ptr(arg)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect()
+    };
+
+    println!("external_main called with args: {:?}", args);
+
+
+    if args.len() >= 3 {
+        let override_arg = args[2].clone();
+        if !override_arg.is_empty() {
+            std::env::set_var("LOCAL_STATE_PATH", &override_arg);
+            println!("Set LOCAL_STATE_PATH to: {}", override_arg);
+        }
+
+        args.remove(2);
+    }
+
+    match touchHLE::main(args.into_iter()) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("Error in external_main: {}", e);
+            1
+        }
+    }
 }
