@@ -1,1 +1,0 @@
-/Users/mohammed/.Trash/vendor 13.53.51/stb /Users/mohammed/.Trash/vendor 13.53.51/dynarmic /Users/mohammed/.Trash/vendor 13.53.51/openal-soft /Users/mohammed/.Trash/vendor 13.53.51/PVRTDecompress /Users/mohammed/.Trash/vendor 13.53.51/SDL
