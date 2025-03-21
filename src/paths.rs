@@ -25,15 +25,24 @@ use std::borrow::Cow;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 
+pub fn local_state_dir() -> Option<String> {
+    std::env::var("LOCAL_STATE_PATH").ok()
+}
+
 /// Name of the directory containing ARMv6 dynamic libraries bundled with
 /// touchHLE.
-pub const DYLIBS_DIR: &str = "touchHLE_dylibs";
+
+pub fn dylibs_path() -> Option<std::path::PathBuf> {
+    local_state_dir().map(|s| std::path::PathBuf::from(s).join("touchHLE_dylibs"))
+}
+
+pub const DYLIBS_DIR: &str = "E:/touchHLE_dylibs";
 
 /// Name of the directory containing fonts bundled with touchHLE.
-pub const FONTS_DIR: &str = "touchHLE_fonts";
+pub const FONTS_DIR: &str = "E:/touchHLE_fonts";
 
 /// Name of the file containing touchHLE's default options for various apps.
-pub const DEFAULT_OPTIONS_FILE: &str = "touchHLE_default_options.txt";
+pub const DEFAULT_OPTIONS_FILE: &str = "E:/touchHLE_default_options.txt";
 
 /// macOS-only: If touchHLE is located in a .app bundle, return the path of the
 /// Resources directory. If touchHLE is not located in a .app bundle, return
