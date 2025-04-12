@@ -450,10 +450,11 @@ fn mktime(env: &mut Environment, tm: MutPtr<tm>) -> time_t {
 type suseconds_t = i32;
 
 #[allow(non_camel_case_types)]
+#[derive(Debug)]
 #[repr(C, packed)]
-struct timeval {
-    tv_sec: time_t,
-    tv_usec: suseconds_t,
+pub(super) struct timeval {
+    pub(super) tv_sec: time_t,
+    pub(super) tv_usec: suseconds_t,
 }
 unsafe impl SafeRead for timeval {}
 

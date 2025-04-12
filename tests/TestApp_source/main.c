@@ -192,6 +192,16 @@ float frexpf(float, int *);
 double frexp(double, int *);
 double fabs(double);
 
+// <inet.h>
+typedef unsigned int socklen_t;
+typedef unsigned int in_addr_t;
+struct in_addr {
+  in_addr_t s_addr;
+};
+in_addr_t inet_addr(const char *);
+const char *inet_ntop(int, const void *, char *, socklen_t);
+int inet_pton(int, const char *, void *);
+
 // `CFBase.h`
 
 typedef unsigned char Boolean;
@@ -2309,6 +2319,49 @@ int test_setjmp() {
   return -1;
 }
 
+int test_inet_addr() {
+  unsigned int res = inet_addr("127.0.0.1");
+  if (res != 16777343) {
+    return -1;
+  }
+  return 0;
+}
+
+int test_inet_ntop() {
+  struct in_addr addr;
+  char buffer[16]; // INET_ADDRSTRLEN
+
+  unsigned int res = inet_addr("127.0.0.1");
+  if (res != 16777343) {
+    return -1;
+  }
+
+  addr.s_addr = res;
+  if (inet_ntop(2, &addr, buffer, sizeof(buffer)) == NULL) {
+    return -2;
+  }
+
+  if (strcmp(buffer, "127.0.0.1") != 0) {
+    return -3;
+  }
+
+  return 0;
+}
+
+int test_inet_pton() {
+  const char *ip_str = "127.0.0.1";
+  struct in_addr addr;
+
+  int res = inet_pton(2, ip_str, &addr);
+  if (res <= 0) {
+    return -1;
+  }
+  if (addr.s_addr != 16777343) {
+    return -2;
+  }
+  return 0;
+}
+
 // clang-format off
 #define FUNC_DEF(func)                                                         \
   { &func, #func }
@@ -2356,6 +2409,9 @@ struct {
     FUNC_DEF(test_frexpf),
     FUNC_DEF(test_frexp),
     FUNC_DEF(test_setjmp),
+    FUNC_DEF(test_inet_addr),
+    FUNC_DEF(test_inet_ntop),
+    FUNC_DEF(test_inet_pton),
 };
 // clang-format on
 
