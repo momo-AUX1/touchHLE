@@ -122,11 +122,8 @@ pub fn create_gles1_ctx(
     options: &crate::options::Options,
 ) -> Box<dyn GLES> {
     log!("Creating an OpenGL ES 1.1 context:");
-    let list = if let Some(ref preference) = options.gles1_implementation {
-        std::slice::from_ref(preference)
-    } else {
-        GLESImplementation::GLES1_IMPLEMENTATIONS
-    };
+    // Always force the use of GLES1OnGL2 (GL2.1 compatibility profile)
+    let list = &[GLESImplementation::GLES1OnGL2];
     let mut gles1_ctx = None;
     for implementation in list {
         log!("Trying: {}", implementation.description());

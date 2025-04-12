@@ -25,6 +25,90 @@
 // so this warning is unhelpful.
 #![allow(rustdoc::private_intra_doc_links)]
 
+use std::ffi::{CStr, c_char};
+use std::os::raw::c_int;
+use std::fs::File;
+use std::io::Write;
+use std::panic;
+use sdl2::video::{GLProfile, Window};
+use sdl2::VideoSubsystem;
+
+#[no_mangle]
+pub extern "C" fn external_main_lib(
+    host_window: *mut sdl2_sys::SDL_Window,
+    host_gl_context: sdl2_sys::SDL_GLContext,
+    argc: c_int,
+    argv: *const *const c_char,
+) -> c_int {
+    panic::set_hook(Box::new(|info| {
+        let mut file = File::create("E:/TLECRASH.txt").unwrap();
+        let _ = writeln!(file, "Panic occurred: {}", info);
+    }));
+
+    // obtain the  SDL video subsystem 
+    let sdl_context = sdl2::init().expect("Failed to initialize SDL2");
+    let video_subsystem = sdl_context.video().expect("Failed to initialize video subsystem");
+
+    // OpenGL attributes (2.1 compatibility profile)
+    {
+        let gl_attr = video_subsystem.gl_attr();
+        gl_attr.set_context_profile(GLProfile::Compatibility);
+        gl_attr.set_context_version(2, 1);
+    }
+
+    // Wrap host-provided SDL_Window pointer into SDL2 Window 
+    let window = unsafe {
+        Window::from_ll(video_subsystem.clone(), host_window, std::ptr::null_mut())
+    };
+
+    // Destroy host-provided GL context
+    unsafe {
+        sdl2_sys::SDL_GL_MakeCurrent(host_window, host_gl_context);
+        sdl2_sys::SDL_GL_DeleteContext(host_gl_context);
+    }
+
+    // Create and set new OpenGL context explicitly
+    let new_gl_context = window.gl_create_context().expect("Failed to create GL context");
+    window.gl_make_current(&new_gl_context).expect("Failed to set GL context current");
+
+    println!("SDL2 context created successfully");
+
+    sdl2::hint::set("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
+    sdl2::hint::set("SDL_JOYSTICK_HIDAPI", "1");
+
+    let mut args: Vec<String> = unsafe {
+        std::slice::from_raw_parts(argv, argc as usize)
+            .iter()
+            .map(|&arg| CStr::from_ptr(arg).to_string_lossy().into_owned())
+            .collect()
+    };
+
+    println!("external_main called with args: {:?}", args);
+
+    if args.len() >= 3 {
+        let override_arg = args[2].clone();
+        if !override_arg.is_empty() {
+            std::env::set_var("LOCAL_STATE_PATH", &override_arg);
+            println!("Set LOCAL_STATE_PATH to: {}", override_arg);
+        }
+
+        args.remove(2);
+
+        if args[1].is_empty() {
+            args.remove(1);
+        }
+    }
+
+    match main(args.into_iter()) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("Error in external_main: {}", e);
+            1
+        }
+    }
+}
+
+
 #[macro_use]
 mod log;
 mod abi;
