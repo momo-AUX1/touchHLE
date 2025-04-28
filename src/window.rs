@@ -20,10 +20,12 @@ use crate::options::Options;
 use sdl2::mouse::MouseButton;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::surface::Surface;
+use sdl2_sys::SDL_PowerState;
 use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::f32::consts::FRAC_PI_2;
 use std::num::NonZeroU32;
+use std::ptr::null_mut;
 use std::time::{Duration, Instant};
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -113,6 +115,14 @@ pub enum Event {
     /// take over.
     EnterDebugger,
     TextInput(TextInputEvent),
+}
+
+pub enum BatteryState {
+    Unknown,
+    OnBattery,
+    NoBattery,
+    Charging,
+    Full,
 }
 
 pub enum GLVersion {
@@ -1271,4 +1281,84 @@ impl Window {
 
 pub fn open_url(url: &str) -> Result<(), String> {
     sdl2::url::open_url(url).map_err(|e| e.to_string())
+}
+
+/// Show an SDL messagebox for an error (typically after a panic).
+///
+/// The window argument allows for passing in the parent window for the
+/// messagebox, which is not required but should be done if possible.
+pub fn show_error_messagebox(window: Option<&Window>, error_message: &str) {
+    use sdl2::messagebox;
+    let mbox = [
+        messagebox::ButtonData {
+            flags: messagebox::MessageBoxButtonFlag::NOTHING,
+            button_id: 0,
+            text: "Open touchHLE directory",
+        },
+        messagebox::ButtonData {
+            flags: messagebox::MessageBoxButtonFlag::NOTHING,
+            button_id: 1,
+            text: "Close",
+        },
+    ];
+
+    let Ok(clicked_button) = messagebox::show_message_box(
+        messagebox::MessageBoxFlag::ERROR,
+        &mbox,
+        "touchHLE crashed!",
+        &format!(
+            "touchHLE crashed with the following error: {}",
+            error_message
+        ),
+        window.map(|win| &win.window),
+        None,
+    ) else {
+        panic!("Failed to show message box!");
+    };
+
+    match clicked_button {
+        messagebox::ClickedButton::CloseButton => {}
+        messagebox::ClickedButton::CustomButton(button) => {
+            match button.button_id {
+                // Open data directory (contains log file on android)
+                0 => match crate::paths::url_for_opening_user_data_dir() {
+                    Ok(url) => {
+                        if let Err(e) = crate::window::open_url(&url) {
+                            echo!("Couldn't open file manager at {:?}: {}", url, e);
+                        } else {
+                            echo!("Opened file manager at {:?}, exiting.", url);
+                        }
+                    }
+                    Err(e) => echo!("Couldn't open file manager: {}", e),
+                },
+                // Close
+                1 => {}
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
+/// Get current battery state from SDL2.
+///
+/// Returns:
+/// - pct: i32 - percentage of battery remaining.
+/// - status: [BatteryState] - the current status of the battery
+///   (unplugged, charging, full, etc.)
+pub fn get_battery_status() -> (i32, BatteryState) {
+    let mut pct = 0;
+    // Unfortunately, Rust-SDL2 does not expose this function yet.
+    // iPhoneOS does not measure the battery in seconds remaining,
+    // so we discard this argument.
+    let status = unsafe { sdl2_sys::SDL_GetPowerInfo(null_mut(), &mut pct) };
+    (
+        pct,
+        match status {
+            SDL_PowerState::SDL_POWERSTATE_UNKNOWN => BatteryState::Unknown,
+            SDL_PowerState::SDL_POWERSTATE_ON_BATTERY => BatteryState::OnBattery,
+            SDL_PowerState::SDL_POWERSTATE_NO_BATTERY => BatteryState::NoBattery,
+            SDL_PowerState::SDL_POWERSTATE_CHARGING => BatteryState::Charging,
+            SDL_PowerState::SDL_POWERSTATE_CHARGED => BatteryState::Full,
+        },
+    )
 }
